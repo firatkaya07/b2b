@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { requireRole } from "@/lib/auth";
 import { supabase } from "@/lib/db";
 import { tl, statusLabel } from "@/lib/format";
@@ -68,7 +69,11 @@ export default async function AdminOrders() {
               const next = nextStatus(o.status);
               return (
                 <tr key={o.id} className="border-t border-slate-100">
-                  <td className="px-3 py-2">{o.id}</td>
+                  <td className="px-3 py-2">
+                    <Link href={`/admin/siparisler/${o.id}`} className="text-brand font-medium hover:underline">
+                      #{o.id}
+                    </Link>
+                  </td>
                   <td className="px-3 py-2 font-medium">{o.student_name}</td>
                   <td className="px-3 py-2 text-slate-500">{o.institution_name}</td>
                   <td className="px-3 py-2">
