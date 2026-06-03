@@ -1,5 +1,5 @@
 import { requireRole } from "@/lib/auth";
-import { q } from "@/lib/db";
+import { supabase } from "@/lib/db";
 import { ordersForUser, orderItems } from "@/lib/queries";
 import { tl, statusLabel } from "@/lib/format";
 import Shell from "@/components/Shell";
@@ -14,16 +14,20 @@ export default async function OrdersPage({
   const newId = searchParams.yeni ? Number(searchParams.yeni) : null;
 
   const data = await Promise.all(
-    orders.map(async (o) => ({
-      order: o,
-      items: await orderItems(o.id),
-      ship: (
-        await q<{ carrier: string; tracking_no: string }>(
-          "SELECT carrier, tracking_no FROM shipments WHERE order_id = ? ORDER BY id DESC LIMIT 1",
-          [o.id]
-        )
-      )[0],
-    }))
+    orders.map(async (o) => {
+      const { data: shipData } = await supabase
+        .from("shipments")
+        .select("carrier, tracking_no")
+        .eq("order_id", o.id)
+        .order("id", { ascending: false })
+        .limit(1)
+        .single();
+      return {
+        order: o,
+        items: await orderItems(o.id),
+        ship: shipData ?? undefined,
+      };
+    })
   );
 
   return (

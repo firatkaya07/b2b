@@ -1,18 +1,36 @@
 import { requireRole } from "@/lib/auth";
-import { q } from "@/lib/db";
+import { supabase } from "@/lib/db";
 import Shell from "@/components/Shell";
 import { createStudent } from "../actions";
 
 export default async function StudentsPage() {
   const user = await requireRole("admin");
-  const students = await q<any>(
-    `SELECT u.*, i.name AS institution_name FROM users u
-     LEFT JOIN institutions i ON i.id = u.institution_id
-     WHERE u.role='student' ORDER BY i.name, u.grade, u.section, u.full_name`
+
+  // Fetch students with institution name via foreign key relationship
+  const { data: students, error: studErr } = await supabase
+    .from("users")
+    .select("*, institutions(name)")
+    .eq("role", "student")
+    .order("full_name");
+  if (studErr) throw studErr;
+
+  // Flatten institution_name
+  const studentsWithInst = (students ?? []).map((s: any) => ({
+    ...s,
+    institution_name: s.institutions?.name ?? "",
+  }));
+  // Sort by institution name, grade, section, full_name
+  studentsWithInst.sort((a: any, b: any) =>
+    `${a.institution_name}|${a.grade}|${a.section}|${a.full_name}`.localeCompare(
+      `${b.institution_name}|${b.grade}|${b.section}|${b.full_name}`
+    )
   );
-  const institutions = await q<{ id: number; name: string }>(
-    "SELECT id, name FROM institutions ORDER BY name"
-  );
+
+  const { data: institutions, error: instErr } = await supabase
+    .from("institutions")
+    .select("id, name")
+    .order("name");
+  if (instErr) throw instErr;
 
   return (
     <Shell role="admin" name={user.full_name}>
@@ -30,7 +48,7 @@ export default async function StudentsPage() {
               </tr>
             </thead>
             <tbody>
-              {students.map((s) => (
+              {studentsWithInst.map((s: any) => (
                 <tr key={s.id} className="border-t border-slate-100">
                   <td className="px-3 py-2 font-medium">{s.full_name}</td>
                   <td className="px-3 py-2 text-slate-500">{s.institution_name}</td>
@@ -49,7 +67,7 @@ export default async function StudentsPage() {
           <h2 className="font-semibold">Yeni öğrenci</h2>
           <select name="institution_id" className="input" required>
             <option value="">Kurum seçin</option>
-            {institutions.map((i) => (
+            {(institutions ?? []).map((i) => (
               <option key={i.id} value={i.id}>
                 {i.name}
               </option>

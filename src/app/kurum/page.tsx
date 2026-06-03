@@ -1,45 +1,44 @@
 import { requireRole } from "@/lib/auth";
-import { one } from "@/lib/db";
+import { supabase } from "@/lib/db";
 import { tl } from "@/lib/format";
 import Shell from "@/components/Shell";
 
 export default async function KurumHome() {
   const user = await requireRole("institution");
-  const inst = await one<{ name: string; city: string }>(
-    "SELECT name, city FROM institutions WHERE id = ?",
-    [user.institution_id]
-  );
 
-  const students = Number(
-    (
-      await one<{ c: number }>(
-        "SELECT COUNT(*) c FROM users WHERE role='student' AND institution_id = ?",
-        [user.institution_id]
-      )
-    )?.c ?? 0
-  );
-  const sets = Number(
-    (
-      await one<{ c: number }>("SELECT COUNT(*) c FROM sets WHERE institution_id = ?", [
-        user.institution_id,
-      ])
-    )?.c ?? 0
-  );
-  const orders = Number(
-    (
-      await one<{ c: number }>("SELECT COUNT(*) c FROM orders WHERE institution_id = ?", [
-        user.institution_id,
-      ])
-    )?.c ?? 0
-  );
-  const revenue = Number(
-    (
-      await one<{ s: number }>(
-        "SELECT COALESCE(SUM(total),0) s FROM orders WHERE institution_id = ? AND status != 'cancelled'",
-        [user.institution_id]
-      )
-    )?.s ?? 0
-  );
+  const { data: inst } = await supabase
+    .from("institutions")
+    .select("name, city")
+    .eq("id", user.institution_id!)
+    .single();
+
+  const [studentsRes, setsRes, ordersRes] = await Promise.all([
+    supabase
+      .from("users")
+      .select("*", { count: "exact", head: true })
+      .eq("role", "student")
+      .eq("institution_id", user.institution_id!),
+    supabase
+      .from("sets")
+      .select("*", { count: "exact", head: true })
+      .eq("institution_id", user.institution_id!),
+    supabase
+      .from("orders")
+      .select("*", { count: "exact", head: true })
+      .eq("institution_id", user.institution_id!),
+  ]);
+
+  const students = studentsRes.count ?? 0;
+  const sets = setsRes.count ?? 0;
+  const orders = ordersRes.count ?? 0;
+
+  // Revenue SUM — fetch totals and sum in JS
+  const { data: revenueRows } = await supabase
+    .from("orders")
+    .select("total")
+    .eq("institution_id", user.institution_id!)
+    .neq("status", "cancelled");
+  const revenue = (revenueRows ?? []).reduce((s, r) => s + Number(r.total), 0);
 
   return (
     <Shell role="institution" name={user.full_name}>

@@ -1,26 +1,33 @@
 import { requireRole } from "@/lib/auth";
-import { one } from "@/lib/db";
+import { supabase } from "@/lib/db";
 import { tl } from "@/lib/format";
 import Shell from "@/components/Shell";
 
-async function count(sql: string): Promise<number> {
-  const r = await one<{ c: number }>(sql);
-  return Number(r?.c ?? 0);
-}
-
 export default async function AdminHome() {
   const user = await requireRole("admin");
+
+  const [institutions, students, sets, books, orders] = await Promise.all([
+    supabase.from("institutions").select("*", { count: "exact", head: true }),
+    supabase.from("users").select("*", { count: "exact", head: true }).eq("role", "student"),
+    supabase.from("sets").select("*", { count: "exact", head: true }),
+    supabase.from("books").select("*", { count: "exact", head: true }),
+    supabase.from("orders").select("*", { count: "exact", head: true }),
+  ]);
+
+  // For revenue SUM, fetch totals and sum in JS
+  const { data: revenueRows } = await supabase
+    .from("orders")
+    .select("total")
+    .neq("status", "cancelled");
+  const revenue = (revenueRows ?? []).reduce((s, r) => s + Number(r.total), 0);
+
   const stats = [
-    { label: "Kurumlar", value: await count("SELECT COUNT(*) c FROM institutions") },
-    { label: "Öğrenciler", value: await count("SELECT COUNT(*) c FROM users WHERE role='student'") },
-    { label: "Setler", value: await count("SELECT COUNT(*) c FROM sets") },
-    { label: "Kitaplar", value: await count("SELECT COUNT(*) c FROM books") },
-    { label: "Siparişler", value: await count("SELECT COUNT(*) c FROM orders") },
+    { label: "Kurumlar", value: institutions.count ?? 0 },
+    { label: "Öğrenciler", value: students.count ?? 0 },
+    { label: "Setler", value: sets.count ?? 0 },
+    { label: "Kitaplar", value: books.count ?? 0 },
+    { label: "Siparişler", value: orders.count ?? 0 },
   ];
-  const rev = await one<{ s: number }>(
-    "SELECT COALESCE(SUM(total),0) s FROM orders WHERE status != 'cancelled'"
-  );
-  const revenue = Number(rev?.s ?? 0);
 
   return (
     <Shell role="admin" name={user.full_name}>

@@ -1,5 +1,5 @@
 import { requireRole } from "@/lib/auth";
-import { q } from "@/lib/db";
+import { supabase } from "@/lib/db";
 import { tl } from "@/lib/format";
 import Shell from "@/components/Shell";
 import { createBook } from "../actions";
@@ -7,7 +7,12 @@ import type { Book } from "@/lib/types";
 
 export default async function BooksPage() {
   const user = await requireRole("admin");
-  const books = await q<Book>("SELECT * FROM books ORDER BY title");
+  const { data, error } = await supabase
+    .from("books")
+    .select("*")
+    .order("title");
+  if (error) throw error;
+  const books = data as Book[];
 
   return (
     <Shell role="admin" name={user.full_name}>

@@ -1,5 +1,5 @@
 import { requireRole } from "@/lib/auth";
-import { q } from "@/lib/db";
+import { supabase } from "@/lib/db";
 import { booksInSet } from "@/lib/queries";
 import { tl } from "@/lib/format";
 import Shell from "@/components/Shell";
@@ -8,15 +8,37 @@ import type { Book, SetRow } from "@/lib/types";
 
 export default async function SetsPage() {
   const user = await requireRole("admin");
-  const sets = await q<SetRow & { institution_name: string }>(
-    `SELECT s.*, i.name AS institution_name FROM sets s
-     JOIN institutions i ON i.id = s.institution_id ORDER BY i.name, s.grade`
+
+  // Fetch sets with institution name via foreign key
+  const { data: setsRaw, error: setsErr } = await supabase
+    .from("sets")
+    .select("*, institutions(name)")
+    .order("grade");
+  if (setsErr) throw setsErr;
+
+  const sets = (setsRaw ?? []).map((s: any) => ({
+    ...s,
+    institution_name: s.institutions?.name ?? "",
+  })) as (SetRow & { institution_name: string })[];
+  // Sort by institution name then grade
+  sets.sort((a, b) =>
+    `${a.institution_name}|${a.grade}`.localeCompare(`${b.institution_name}|${b.grade}`)
   );
+
   const setBooks = await Promise.all(sets.map((s) => booksInSet(s.id)));
-  const institutions = await q<{ id: number; name: string }>(
-    "SELECT id, name FROM institutions ORDER BY name"
-  );
-  const books = await q<Book>("SELECT * FROM books ORDER BY title");
+
+  const { data: institutions, error: instErr } = await supabase
+    .from("institutions")
+    .select("id, name")
+    .order("name");
+  if (instErr) throw instErr;
+
+  const { data: booksData, error: booksErr } = await supabase
+    .from("books")
+    .select("*")
+    .order("title");
+  if (booksErr) throw booksErr;
+  const books = booksData as Book[];
 
   return (
     <Shell role="admin" name={user.full_name}>
@@ -47,7 +69,7 @@ export default async function SetsPage() {
           <h2 className="font-semibold">Yeni set</h2>
           <select name="institution_id" className="input" required>
             <option value="">Kurum seçin</option>
-            {institutions.map((i) => (
+            {(institutions ?? []).map((i) => (
               <option key={i.id} value={i.id}>
                 {i.name}
               </option>

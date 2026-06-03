@@ -1,13 +1,19 @@
 import { redirect } from "next/navigation";
-import { one } from "./db";
+import { supabase } from "./db";
 import { getSession } from "./session";
 import type { Role, User } from "./types";
 
 export async function currentUser(): Promise<User | null> {
   const s = await getSession();
   if (!s) return null;
-  const u = await one<User>("SELECT * FROM users WHERE id = ? AND is_active = 1", [s.uid]);
-  return u ?? null;
+  const { data, error } = await supabase
+    .from("users")
+    .select("*")
+    .eq("id", s.uid)
+    .eq("is_active", 1)
+    .single();
+  if (error) return null;
+  return (data as User) ?? null;
 }
 
 // Sayfa koruması: oturum yoksa /login'e, rol uyuşmazsa kendi paneline yönlendirir.

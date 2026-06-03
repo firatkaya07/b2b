@@ -1,15 +1,19 @@
 import { requireRole } from "@/lib/auth";
-import { q } from "@/lib/db";
+import { supabase } from "@/lib/db";
 import Shell from "@/components/Shell";
 import { createStudent } from "../actions";
 
 export default async function KurumStudents() {
   const user = await requireRole("institution");
-  const students = await q<any>(
-    `SELECT * FROM users WHERE role='student' AND institution_id = ?
-     ORDER BY grade, section, full_name`,
-    [user.institution_id]
-  );
+  const { data: students, error } = await supabase
+    .from("users")
+    .select("*")
+    .eq("role", "student")
+    .eq("institution_id", user.institution_id!)
+    .order("grade")
+    .order("section")
+    .order("full_name");
+  if (error) throw error;
 
   return (
     <Shell role="institution" name={user.full_name}>
@@ -26,7 +30,7 @@ export default async function KurumStudents() {
               </tr>
             </thead>
             <tbody>
-              {students.map((s) => (
+              {(students ?? []).map((s: any) => (
                 <tr key={s.id} className="border-t border-slate-100">
                   <td className="px-3 py-2 font-medium">{s.full_name}</td>
                   <td className="px-3 py-2">

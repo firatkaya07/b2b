@@ -1,6 +1,6 @@
 "use server";
 
-import { one, run } from "@/lib/db";
+import { supabase } from "@/lib/db";
 import { sendSms } from "@/lib/sms";
 import { createSession } from "@/lib/session";
 import type { User } from "@/lib/types";
@@ -25,13 +25,15 @@ export async function requestOtp(
   formData: FormData
 ): Promise<OtpRequestState> {
   const phone = normalizePhone(String(formData.get("phone") || ""));
-  const user = await one<User>(
-    "SELECT * FROM users WHERE phone = ? AND is_active = 1",
-    [phone]
-  );
+  const { data: user, error } = await supabase
+    .from("users")
+    .select("*")
+    .eq("phone", phone)
+    .eq("is_active", 1)
+    .single();
 
   // Sisteme kullanıcı tanımlanmadıysa giriş yapamaz.
-  if (!user) {
+  if (error || !user) {
     return {
       ok: false,
       message: "Bu telefon numarası sistemde tanımlı değil. Lütfen kurumunuzla iletişime geçin.",
@@ -40,11 +42,10 @@ export async function requestOtp(
 
   const code = String(Math.floor(100000 + Math.random() * 900000));
   const expires = Date.now() + 3 * 60 * 1000; // 3 dakika
-  await run("INSERT INTO otp_codes (phone, code, expires_at) VALUES (?,?,?)", [
-    phone,
-    code,
-    expires,
-  ]);
+  const { error: insertErr } = await supabase
+    .from("otp_codes")
+    .insert({ phone, code, expires_at: expires });
+  if (insertErr) throw insertErr;
 
   await sendSms(phone, `Kitap Seti Platformu giriş kodunuz: ${code} (3 dk geçerli)`);
 
@@ -70,25 +71,38 @@ export async function verifyOtp(
   const phone = normalizePhone(String(formData.get("phone") || ""));
   const code = String(formData.get("code") || "").trim();
 
-  const row = await one<{ id: number; code: string; expires_at: number; attempts: number }>(
-    `SELECT * FROM otp_codes WHERE phone = ? AND consumed = 0
-     ORDER BY id DESC LIMIT 1`,
-    [phone]
-  );
+  const { data: row, error } = await supabase
+    .from("otp_codes")
+    .select("*")
+    .eq("phone", phone)
+    .eq("consumed", 0)
+    .order("id", { ascending: false })
+    .limit(1)
+    .single();
 
-  if (!row) return { ok: false, message: "Aktif bir kod bulunamadı. Tekrar kod isteyin." };
+  if (error || !row) return { ok: false, message: "Aktif bir kod bulunamadı. Tekrar kod isteyin." };
   if (row.attempts >= 5)
     return { ok: false, message: "Çok fazla hatalı deneme. Yeni kod isteyin." };
   if (Date.now() > Number(row.expires_at))
     return { ok: false, message: "Kodun süresi doldu. Yeni kod isteyin." };
 
   if (row.code !== code) {
-    await run("UPDATE otp_codes SET attempts = attempts + 1 WHERE id = ?", [row.id]);
+    await supabase
+      .from("otp_codes")
+      .update({ attempts: row.attempts + 1 })
+      .eq("id", row.id);
     return { ok: false, message: "Kod hatalı. Lütfen tekrar deneyin." };
   }
 
-  await run("UPDATE otp_codes SET consumed = 1 WHERE id = ?", [row.id]);
-  const user = (await one<User>("SELECT * FROM users WHERE phone = ?", [phone]))!;
+  await supabase.from("otp_codes").update({ consumed: 1 }).eq("id", row.id);
+
+  const { data: user } = await supabase
+    .from("users")
+    .select("*")
+    .eq("phone", phone)
+    .single();
+  if (!user) return { ok: false, message: "Kullanıcı bulunamadı." };
+
   await createSession({ uid: user.id, role: user.role, name: user.full_name });
 
   const redirect =

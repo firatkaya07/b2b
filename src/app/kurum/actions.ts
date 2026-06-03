@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { requireRole } from "@/lib/auth";
-import { run } from "@/lib/db";
+import { supabase } from "@/lib/db";
 
 function normalizePhone(raw: string): string {
   let d = raw.replace(/[^\d]/g, "");
@@ -16,18 +16,16 @@ export async function createStudent(formData: FormData) {
   const user = await requireRole("institution");
   if (!user.institution_id) return;
   try {
-    await run(
-      `INSERT INTO users (role, full_name, phone, institution_id, grade, section, student_no)
-       VALUES ('student',?,?,?,?,?,?)`,
-      [
-        String(formData.get("full_name")),
-        normalizePhone(String(formData.get("phone"))),
-        user.institution_id,
-        String(formData.get("grade")),
-        String(formData.get("section")),
-        String(formData.get("student_no")),
-      ]
-    );
+    const { error } = await supabase.from("users").insert({
+      role: "student",
+      full_name: String(formData.get("full_name")),
+      phone: normalizePhone(String(formData.get("phone"))),
+      institution_id: user.institution_id,
+      grade: String(formData.get("grade")),
+      section: String(formData.get("section")),
+      student_no: String(formData.get("student_no")),
+    });
+    if (error) throw error;
   } catch {
     /* benzersiz telefon ihlali */
   }

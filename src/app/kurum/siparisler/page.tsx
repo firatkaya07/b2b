@@ -1,17 +1,40 @@
 import { requireRole } from "@/lib/auth";
-import { q } from "@/lib/db";
+import { supabase } from "@/lib/db";
 import { tl, statusLabel } from "@/lib/format";
 import Shell from "@/components/Shell";
 
 export default async function KurumOrders() {
   const user = await requireRole("institution");
-  const orders = await q<any>(
-    `SELECT o.*, u.full_name AS student_name,
-      (SELECT tracking_no FROM shipments sh WHERE sh.order_id=o.id ORDER BY sh.id DESC LIMIT 1) AS tracking
-     FROM orders o JOIN users u ON u.id = o.user_id
-     WHERE o.institution_id = ? ORDER BY o.id DESC`,
-    [user.institution_id]
-  );
+
+  // Fetch orders with user name via foreign key
+  const { data: ordersRaw, error } = await supabase
+    .from("orders")
+    .select("*, users(full_name)")
+    .eq("institution_id", user.institution_id!)
+    .order("id", { ascending: false });
+  if (error) throw error;
+
+  // Get tracking numbers for these orders
+  const orderIds = (ordersRaw ?? []).map((o: any) => o.id);
+  let shipmentsMap: Record<number, string> = {};
+  if (orderIds.length > 0) {
+    const { data: shipments } = await supabase
+      .from("shipments")
+      .select("order_id, tracking_no")
+      .in("order_id", orderIds)
+      .order("id", { ascending: false });
+    for (const s of shipments ?? []) {
+      if (!shipmentsMap[s.order_id]) {
+        shipmentsMap[s.order_id] = s.tracking_no;
+      }
+    }
+  }
+
+  const orders = (ordersRaw ?? []).map((o: any) => ({
+    ...o,
+    student_name: o.users?.full_name ?? "",
+    tracking: shipmentsMap[o.id] || null,
+  }));
 
   return (
     <Shell role="institution" name={user.full_name}>
@@ -28,7 +51,7 @@ export default async function KurumOrders() {
             </tr>
           </thead>
           <tbody>
-            {orders.map((o) => {
+            {orders.map((o: any) => {
               const st = statusLabel(o.status);
               return (
                 <tr key={o.id} className="border-t border-slate-100">

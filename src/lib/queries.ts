@@ -1,31 +1,42 @@
-import { q, one, run } from "./db";
+import { supabase } from "./db";
 import type { Book, OrderRow, SetRow, User } from "./types";
 
 // Öğrencinin görebileceği setler: aynı kurum + aynı sınıf seviyesi +
 // (set şubesi boş VEYA öğrencinin şubesine eşit).
-export function visibleSetsForStudent(student: User): Promise<SetRow[]> {
-  return q<SetRow>(
-    `SELECT * FROM sets
-     WHERE is_active = 1
-       AND institution_id = ?
-       AND grade = ?
-       AND (section IS NULL OR section = ?)
-     ORDER BY name`,
-    [student.institution_id, student.grade, student.section]
-  );
+export async function visibleSetsForStudent(student: User): Promise<SetRow[]> {
+  const { data, error } = await supabase
+    .from("sets")
+    .select("*")
+    .eq("is_active", 1)
+    .eq("institution_id", student.institution_id!)
+    .eq("grade", student.grade!)
+    .or(`section.is.null,section.eq.${student.section}`)
+    .order("name");
+  if (error) throw error;
+  return data as SetRow[];
 }
 
-export function getSet(id: number): Promise<SetRow | undefined> {
-  return one<SetRow>("SELECT * FROM sets WHERE id = ?", [id]);
+export async function getSet(id: number): Promise<SetRow | undefined> {
+  const { data, error } = await supabase
+    .from("sets")
+    .select("*")
+    .eq("id", id)
+    .single();
+  if (error && error.code !== "PGRST116") throw error; // PGRST116 = no rows
+  return (data as SetRow) ?? undefined;
 }
 
-export function booksInSet(setId: number): Promise<(Book & { quantity: number })[]> {
-  return q<Book & { quantity: number }>(
-    `SELECT b.*, sb.quantity FROM set_books sb
-     JOIN books b ON b.id = sb.book_id
-     WHERE sb.set_id = ? ORDER BY b.title`,
-    [setId]
-  );
+export async function booksInSet(setId: number): Promise<(Book & { quantity: number })[]> {
+  const { data, error } = await supabase
+    .from("set_books")
+    .select("quantity, books(*)")
+    .eq("set_id", setId);
+  if (error) throw error;
+  // Flatten: each row has { quantity, books: { id, title, ... } }
+  return (data ?? []).map((row: any) => ({
+    ...row.books,
+    quantity: row.quantity,
+  })) as (Book & { quantity: number })[];
 }
 
 // Bir setin öğrenci tarafından görülebilir olduğunu doğrular (yetki kontrolü).
@@ -45,12 +56,21 @@ export interface CartLine {
   quantity: number;
 }
 
-export function getCart(userId: number): Promise<CartLine[]> {
-  return q<CartLine>(
-    `SELECT c.set_id, s.name, s.price, c.quantity FROM cart_items c
-     JOIN sets s ON s.id = c.set_id WHERE c.user_id = ? ORDER BY s.name`,
-    [userId]
-  );
+export async function getCart(userId: number): Promise<CartLine[]> {
+  const { data, error } = await supabase
+    .from("cart_items")
+    .select("set_id, quantity, sets(name, price)")
+    .eq("user_id", userId);
+  if (error) throw error;
+  // Flatten and sort by name
+  const lines = (data ?? []).map((row: any) => ({
+    set_id: row.set_id,
+    name: row.sets.name,
+    price: row.sets.price,
+    quantity: row.quantity,
+  })) as CartLine[];
+  lines.sort((a, b) => a.name.localeCompare(b.name));
+  return lines;
 }
 
 export async function cartTotal(userId: number): Promise<number> {
@@ -59,28 +79,61 @@ export async function cartTotal(userId: number): Promise<number> {
 }
 
 export async function addToCart(userId: number, setId: number) {
-  await run(
-    `INSERT INTO cart_items (user_id, set_id, quantity) VALUES (?,?,1)
-     ON CONFLICT (user_id, set_id) DO UPDATE SET quantity = cart_items.quantity + 1`,
-    [userId, setId]
-  );
+  // Try to get existing cart item
+  const { data: existing } = await supabase
+    .from("cart_items")
+    .select("quantity")
+    .eq("user_id", userId)
+    .eq("set_id", setId)
+    .single();
+
+  if (existing) {
+    const { error } = await supabase
+      .from("cart_items")
+      .update({ quantity: existing.quantity + 1 })
+      .eq("user_id", userId)
+      .eq("set_id", setId);
+    if (error) throw error;
+  } else {
+    const { error } = await supabase
+      .from("cart_items")
+      .insert({ user_id: userId, set_id: setId, quantity: 1 });
+    if (error) throw error;
+  }
 }
 
 export async function removeFromCart(userId: number, setId: number) {
-  await run("DELETE FROM cart_items WHERE user_id = ? AND set_id = ?", [userId, setId]);
+  const { error } = await supabase
+    .from("cart_items")
+    .delete()
+    .eq("user_id", userId)
+    .eq("set_id", setId);
+  if (error) throw error;
 }
 
 export async function clearCart(userId: number) {
-  await run("DELETE FROM cart_items WHERE user_id = ?", [userId]);
+  const { error } = await supabase
+    .from("cart_items")
+    .delete()
+    .eq("user_id", userId);
+  if (error) throw error;
 }
 
-export function ordersForUser(userId: number): Promise<OrderRow[]> {
-  return q<OrderRow>("SELECT * FROM orders WHERE user_id = ? ORDER BY id DESC", [userId]);
+export async function ordersForUser(userId: number): Promise<OrderRow[]> {
+  const { data, error } = await supabase
+    .from("orders")
+    .select("*")
+    .eq("user_id", userId)
+    .order("id", { ascending: false });
+  if (error) throw error;
+  return data as OrderRow[];
 }
 
-export function orderItems(orderId: number) {
-  return q<{ id: number; set_name: string; price: number; quantity: number }>(
-    "SELECT * FROM order_items WHERE order_id = ?",
-    [orderId]
-  );
+export async function orderItems(orderId: number) {
+  const { data, error } = await supabase
+    .from("order_items")
+    .select("*")
+    .eq("order_id", orderId);
+  if (error) throw error;
+  return data as { id: number; set_name: string; price: number; quantity: number }[];
 }

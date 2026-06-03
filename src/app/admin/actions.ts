@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { requireRole } from "@/lib/auth";
-import { run } from "@/lib/db";
+import { supabase } from "@/lib/db";
 
 function normalizePhone(raw: string): string {
   let d = raw.replace(/[^\d]/g, "");
@@ -13,25 +13,25 @@ function normalizePhone(raw: string): string {
 
 export async function createInstitution(formData: FormData) {
   await requireRole("admin");
-  await run("INSERT INTO institutions (name, city, contact_name) VALUES (?,?,?)", [
-    String(formData.get("name")),
-    String(formData.get("city") || ""),
-    String(formData.get("contact_name") || ""),
-  ]);
+  const { error } = await supabase.from("institutions").insert({
+    name: String(formData.get("name")),
+    city: String(formData.get("city") || ""),
+    contact_name: String(formData.get("contact_name") || ""),
+  });
+  if (error) throw error;
   revalidatePath("/admin/kurumlar");
 }
 
 export async function createInstitutionUser(formData: FormData) {
   await requireRole("admin");
   try {
-    await run(
-      `INSERT INTO users (role, full_name, phone, institution_id) VALUES ('institution',?,?,?)`,
-      [
-        String(formData.get("full_name")),
-        normalizePhone(String(formData.get("phone"))),
-        Number(formData.get("institution_id")),
-      ]
-    );
+    const { error } = await supabase.from("users").insert({
+      role: "institution",
+      full_name: String(formData.get("full_name")),
+      phone: normalizePhone(String(formData.get("phone"))),
+      institution_id: Number(formData.get("institution_id")),
+    });
+    if (error) throw error;
   } catch {
     /* benzersiz telefon ihlali sessizce geçilir */
   }
@@ -40,39 +40,41 @@ export async function createInstitutionUser(formData: FormData) {
 
 export async function createBook(formData: FormData) {
   await requireRole("admin");
-  await run("INSERT INTO books (title, author, publisher, isbn, price) VALUES (?,?,?,?,?)", [
-    String(formData.get("title")),
-    String(formData.get("author") || ""),
-    String(formData.get("publisher") || ""),
-    String(formData.get("isbn") || ""),
-    Number(formData.get("price") || 0),
-  ]);
+  const { error } = await supabase.from("books").insert({
+    title: String(formData.get("title")),
+    author: String(formData.get("author") || ""),
+    publisher: String(formData.get("publisher") || ""),
+    isbn: String(formData.get("isbn") || ""),
+    price: Number(formData.get("price") || 0),
+  });
+  if (error) throw error;
   revalidatePath("/admin/kitaplar");
 }
 
 export async function createSet(formData: FormData) {
   await requireRole("admin");
-  const res = await run(
-    `INSERT INTO sets (institution_id, name, grade, section, teacher, description, price)
-     VALUES (?,?,?,?,?,?,?) RETURNING id`,
-    [
-      Number(formData.get("institution_id")),
-      String(formData.get("name")),
-      String(formData.get("grade")),
-      String(formData.get("section") || "") || null,
-      String(formData.get("teacher") || "") || null,
-      String(formData.get("description") || ""),
-      Number(formData.get("price") || 0),
-    ]
-  );
-  const setId = res.id!;
+  const { data, error } = await supabase
+    .from("sets")
+    .insert({
+      institution_id: Number(formData.get("institution_id")),
+      name: String(formData.get("name")),
+      grade: String(formData.get("grade")),
+      section: String(formData.get("section") || "") || null,
+      teacher: String(formData.get("teacher") || "") || null,
+      description: String(formData.get("description") || ""),
+      price: Number(formData.get("price") || 0),
+    })
+    .select("id")
+    .single();
+  if (error) throw error;
+  const setId = data!.id;
 
   const bookIds = formData.getAll("book_ids").map((v) => Number(v));
   for (const id of bookIds) {
-    await run(
-      "INSERT INTO set_books (set_id, book_id, quantity) VALUES (?,?,1) ON CONFLICT DO NOTHING",
-      [setId, id]
-    );
+    // ON CONFLICT DO NOTHING — ignore duplicates
+    await supabase
+      .from("set_books")
+      .upsert({ set_id: setId, book_id: id, quantity: 1 }, { onConflict: "set_id,book_id" });
   }
   revalidatePath("/admin/setler");
 }
@@ -80,18 +82,16 @@ export async function createSet(formData: FormData) {
 export async function createStudent(formData: FormData) {
   await requireRole("admin");
   try {
-    await run(
-      `INSERT INTO users (role, full_name, phone, institution_id, grade, section, student_no)
-       VALUES ('student',?,?,?,?,?,?)`,
-      [
-        String(formData.get("full_name")),
-        normalizePhone(String(formData.get("phone"))),
-        Number(formData.get("institution_id")),
-        String(formData.get("grade")),
-        String(formData.get("section")),
-        String(formData.get("student_no")),
-      ]
-    );
+    const { error } = await supabase.from("users").insert({
+      role: "student",
+      full_name: String(formData.get("full_name")),
+      phone: normalizePhone(String(formData.get("phone"))),
+      institution_id: Number(formData.get("institution_id")),
+      grade: String(formData.get("grade")),
+      section: String(formData.get("section")),
+      student_no: String(formData.get("student_no")),
+    });
+    if (error) throw error;
   } catch {
     /* benzersiz telefon ihlali */
   }

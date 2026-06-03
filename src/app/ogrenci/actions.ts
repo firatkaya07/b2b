@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { currentUser } from "@/lib/auth";
-import { run } from "@/lib/db";
+import { supabase } from "@/lib/db";
 import {
   addToCart as addToCartQ,
   removeFromCart as removeFromCartQ,
@@ -62,19 +62,33 @@ export async function checkout(
   const total = await cartTotal(user!.id);
 
   // 1) Siparişi oluştur
-  const order = await run(
-    `INSERT INTO orders (user_id, institution_id, status, total, recipient_name,
-      recipient_phone, city, district, address)
-     VALUES (?,?,?,?,?,?,?,?,?) RETURNING id`,
-    [user!.id, user!.institution_id, "pending", total, recipient, phone, city, district, address]
-  );
-  const orderId = order.id!;
+  const { data: order, error: orderErr } = await supabase
+    .from("orders")
+    .insert({
+      user_id: user!.id,
+      institution_id: user!.institution_id,
+      status: "pending",
+      total,
+      recipient_name: recipient,
+      recipient_phone: phone,
+      city,
+      district,
+      address,
+    })
+    .select("id")
+    .single();
+  if (orderErr) throw orderErr;
+  const orderId = order!.id;
 
   for (const l of lines) {
-    await run(
-      "INSERT INTO order_items (order_id, set_id, set_name, price, quantity) VALUES (?,?,?,?,?)",
-      [orderId, l.set_id, l.name, l.price, l.quantity]
-    );
+    const { error } = await supabase.from("order_items").insert({
+      order_id: orderId,
+      set_id: l.set_id,
+      set_name: l.name,
+      price: l.price,
+      quantity: l.quantity,
+    });
+    if (error) throw error;
   }
 
   // 2) Ödemeyi başlat
@@ -86,19 +100,22 @@ export async function checkout(
     address,
     city,
   });
-  await run(
-    "INSERT INTO payments (order_id, provider, status, transaction_id) VALUES (?,?,?,?)",
-    [orderId, pay.provider, pay.ok ? "success" : "failed", pay.transactionId || null]
-  );
+  const { error: payErr } = await supabase.from("payments").insert({
+    order_id: orderId,
+    provider: pay.provider,
+    status: pay.ok ? "success" : "failed",
+    transaction_id: pay.transactionId || null,
+  });
+  if (payErr) throw payErr;
 
   if (!pay.ok) {
-    await run("UPDATE orders SET status = 'cancelled' WHERE id = ?", [orderId]);
+    await supabase.from("orders").update({ status: "cancelled" }).eq("id", orderId);
     return { ok: false, message: "Ödeme başarısız: " + (pay.info || "") };
   }
   // Gerçek sağlayıcıda 3D/iframe için yönlendirme gerekirse:
   if (pay.redirectUrl) redirect(pay.redirectUrl);
 
-  await run("UPDATE orders SET status = 'paid' WHERE id = ?", [orderId]);
+  await supabase.from("orders").update({ status: "paid" }).eq("id", orderId);
 
   // 3) Kargo oluştur
   const ship = await createShipment({
@@ -110,11 +127,13 @@ export async function checkout(
     address,
   });
   if (ship.ok) {
-    await run(
-      "INSERT INTO shipments (order_id, carrier, tracking_no, status) VALUES (?,?,?,?)",
-      [orderId, ship.carrier, ship.trackingNo || null, "created"]
-    );
-    await run("UPDATE orders SET status = 'shipped' WHERE id = ?", [orderId]);
+    await supabase.from("shipments").insert({
+      order_id: orderId,
+      carrier: ship.carrier,
+      tracking_no: ship.trackingNo || null,
+      status: "created",
+    });
+    await supabase.from("orders").update({ status: "shipped" }).eq("id", orderId);
   }
 
   await clearCart(user!.id);
