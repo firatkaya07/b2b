@@ -18,6 +18,7 @@ const NAV: Record<Role, { href: string; label: string }[]> = {
   ],
   institution: [
     { href: "/kurum", label: "Özet" },
+    { href: "/kurum/setler", label: "Setler" },
     { href: "/kurum/ogrenciler", label: "Öğrenciler" },
     { href: "/kurum/siparisler", label: "Siparişler" },
   ],
