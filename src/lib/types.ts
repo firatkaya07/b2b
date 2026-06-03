@@ -31,6 +31,7 @@ export interface Book {
   publisher: string | null;
   isbn: string | null;
   price: number;
+  image_url: string | null;
 }
 
 export interface OrderRow {

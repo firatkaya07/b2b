@@ -46,6 +46,7 @@ export async function createBook(formData: FormData) {
     publisher: String(formData.get("publisher") || ""),
     isbn: String(formData.get("isbn") || ""),
     price: Number(formData.get("price") || 0),
+    image_url: String(formData.get("image_url") || "") || null,
   });
   if (error) throw error;
   revalidatePath("/admin/kitaplar");

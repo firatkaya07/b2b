@@ -1,6 +1,13 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  serverExternalPackages: ["pg"],
+  images: {
+    remotePatterns: [
+      {
+        protocol: "https",
+        hostname: "www.kitapisler.com",
+      },
+    ],
+  },
 };
 
 module.exports = nextConfig;
