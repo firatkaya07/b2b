@@ -12,6 +12,8 @@ export interface User {
   is_active: number;
 }
 
+export type ApprovalStatus = "pending_approval" | "approved" | "rejected";
+
 export interface SetRow {
   id: number;
   institution_id: number;
@@ -22,6 +24,7 @@ export interface SetRow {
   description: string | null;
   price: number;
   is_active: number;
+  approval_status: ApprovalStatus;
 }
 
 export interface Book {

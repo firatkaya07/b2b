@@ -31,3 +31,33 @@ export async function createStudent(formData: FormData) {
   }
   revalidatePath("/kurum/ogrenciler");
 }
+
+export async function createSetRequest(formData: FormData) {
+  const user = await requireRole("institution");
+  if (!user.institution_id) return;
+
+  const { data, error } = await supabase
+    .from("sets")
+    .insert({
+      institution_id: user.institution_id,
+      name: String(formData.get("name")),
+      grade: String(formData.get("grade")),
+      section: String(formData.get("section") || "") || null,
+      teacher: String(formData.get("teacher") || "") || null,
+      description: String(formData.get("description") || ""),
+      price: 0,
+      is_active: 0,
+      approval_status: "pending_approval",
+    })
+    .select("id")
+    .single();
+  if (error) throw error;
+
+  const bookIds = formData.getAll("book_ids").map((v) => Number(v));
+  for (const bookId of bookIds) {
+    await supabase
+      .from("set_books")
+      .upsert({ set_id: data!.id, book_id: bookId, quantity: 1 }, { onConflict: "set_id,book_id" });
+  }
+  revalidatePath("/kurum/setler");
+}

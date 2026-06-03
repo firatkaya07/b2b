@@ -8,6 +8,7 @@ export async function visibleSetsForStudent(student: User): Promise<SetRow[]> {
     .from("sets")
     .select("*")
     .eq("is_active", 1)
+    .eq("approval_status", "approved")
     .eq("institution_id", student.institution_id!)
     .eq("grade", student.grade!)
     .or(`section.is.null,section.eq.${student.section}`)
@@ -43,6 +44,7 @@ export async function booksInSet(setId: number): Promise<(Book & { quantity: num
 export function canStudentSeeSet(student: User, set: SetRow): boolean {
   return (
     set.is_active === 1 &&
+    set.approval_status === "approved" &&
     Number(set.institution_id) === Number(student.institution_id) &&
     set.grade === student.grade &&
     (set.section === null || set.section === student.section)

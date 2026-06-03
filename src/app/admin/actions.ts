@@ -113,3 +113,28 @@ export async function updateOrderStatus(formData: FormData) {
   if (error) throw error;
   revalidatePath("/admin/siparisler");
 }
+
+export async function approveSet(formData: FormData) {
+  await requireRole("admin");
+  const setId = Number(formData.get("setId"));
+  const price = Number(formData.get("price") || 0);
+
+  const { error } = await supabase
+    .from("sets")
+    .update({ approval_status: "approved", price, is_active: 1 })
+    .eq("id", setId);
+  if (error) throw error;
+  revalidatePath("/admin/setler");
+}
+
+export async function rejectSet(formData: FormData) {
+  await requireRole("admin");
+  const setId = Number(formData.get("setId"));
+
+  const { error } = await supabase
+    .from("sets")
+    .update({ approval_status: "rejected", is_active: 0 })
+    .eq("id", setId);
+  if (error) throw error;
+  revalidatePath("/admin/setler");
+}
