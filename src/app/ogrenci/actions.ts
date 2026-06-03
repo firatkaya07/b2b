@@ -67,7 +67,7 @@ export async function checkout(
     .insert({
       user_id: user!.id,
       institution_id: user!.institution_id,
-      status: "pending",
+      status: "waiting_approval",
       total,
       recipient_name: recipient,
       recipient_phone: phone,
@@ -114,27 +114,6 @@ export async function checkout(
   }
   // Gerçek sağlayıcıda 3D/iframe için yönlendirme gerekirse:
   if (pay.redirectUrl) redirect(pay.redirectUrl);
-
-  await supabase.from("orders").update({ status: "paid" }).eq("id", orderId);
-
-  // 3) Kargo oluştur
-  const ship = await createShipment({
-    orderId,
-    recipientName: recipient,
-    recipientPhone: phone,
-    city,
-    district,
-    address,
-  });
-  if (ship.ok) {
-    await supabase.from("shipments").insert({
-      order_id: orderId,
-      carrier: ship.carrier,
-      tracking_no: ship.trackingNo || null,
-      status: "created",
-    });
-    await supabase.from("orders").update({ status: "shipped" }).eq("id", orderId);
-  }
 
   await clearCart(user!.id);
   redirect(`/ogrenci/siparisler?yeni=${orderId}`);

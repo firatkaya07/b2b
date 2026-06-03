@@ -98,3 +98,18 @@ export async function createStudent(formData: FormData) {
   }
   revalidatePath("/admin/ogrenciler");
 }
+
+export async function updateOrderStatus(formData: FormData) {
+  await requireRole("admin");
+  const orderId = Number(formData.get("orderId"));
+  const status = String(formData.get("status"));
+  const allowed = ["preparing", "shipped", "cancelled"];
+  if (!allowed.includes(status)) return;
+
+  const { error } = await supabase
+    .from("orders")
+    .update({ status })
+    .eq("id", orderId);
+  if (error) throw error;
+  revalidatePath("/admin/siparisler");
+}
