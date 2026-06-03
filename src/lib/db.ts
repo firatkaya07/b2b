@@ -9,9 +9,16 @@ declare global {
 
 function getPool(): Pool {
   if (!global.__pool) {
-    const connectionString = process.env.DATABASE_URL;
+    // Vercel'in Supabase entegrasyonu değişkeni POSTGRES_URL adıyla ekler.
+    const connectionString =
+      process.env.DATABASE_URL ||
+      process.env.POSTGRES_URL ||
+      process.env.POSTGRES_PRISMA_URL ||
+      process.env.POSTGRES_URL_NON_POOLING;
     if (!connectionString) {
-      throw new Error("DATABASE_URL tanımlı değil. Supabase Postgres bağlantı dizesini ayarlayın.");
+      throw new Error(
+        "Veritabanı bağlantı dizesi yok. DATABASE_URL veya POSTGRES_URL ayarlayın (Supabase Postgres)."
+      );
     }
     global.__pool = new Pool({
       connectionString,
