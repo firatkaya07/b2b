@@ -3,7 +3,7 @@ import { requireRole } from "@/lib/auth";
 import { supabase } from "@/lib/db";
 import { tl } from "@/lib/format";
 import Shell from "@/components/Shell";
-import { createSetRequest } from "../actions";
+import { createSetRequest, toggleSetVisibility } from "../actions";
 import type { Book } from "@/lib/types";
 
 function approvalBadge(status: string) {
@@ -62,31 +62,53 @@ export default async function KurumSets() {
             <div className="grid gap-4 sm:grid-cols-2">
               {(sets ?? []).map((s: any) => {
                 const badge = approvalBadge(s.approval_status);
+                const isApproved = s.approval_status === "approved";
+                const isActive = s.is_active === 1;
                 return (
-                  <Link
-                    key={s.id}
-                    href={`/kurum/setler/${s.id}`}
-                    className="card hover:shadow-md transition group"
-                  >
-                    <div className="flex items-start justify-between">
-                      <h2 className="font-semibold group-hover:text-brand transition">{s.name}</h2>
-                      <span className={`badge ${badge.cls}`}>{badge.text}</span>
-                    </div>
-                    <div className="mt-2 flex gap-2 text-xs">
-                      <span className="badge bg-brand-light text-brand-dark">{s.grade}. sınıf</span>
-                      {s.section && <span className="badge bg-slate-100 text-slate-600">{s.section} şubesi</span>}
-                      {s.teacher && <span className="badge bg-slate-100 text-slate-600">{s.teacher}</span>}
-                    </div>
-                    {s.description && (
-                      <p className="mt-2 text-sm text-slate-500 line-clamp-2">{s.description}</p>
-                    )}
-                    <div className="mt-3 flex items-center justify-between text-sm">
-                      <span className="text-slate-400">{bookCountMap[s.id] || 0} kitap</span>
-                      {s.approval_status === "approved" && (
-                        <span className="font-bold text-brand">{tl(s.price)}</span>
+                  <div key={s.id} className={`card transition ${!isActive && isApproved ? "opacity-60" : ""}`}>
+                    <Link href={`/kurum/setler/${s.id}`} className="group">
+                      <div className="flex items-start justify-between">
+                        <h2 className="font-semibold group-hover:text-brand transition">{s.name}</h2>
+                        <div className="flex gap-1">
+                          {isApproved && (
+                            <span className={`badge ${isActive ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>
+                              {isActive ? "Görünür" : "Gizli"}
+                            </span>
+                          )}
+                          {!isApproved && (
+                            <span className={`badge ${badge.cls}`}>{badge.text}</span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="mt-2 flex gap-2 text-xs">
+                        <span className="badge bg-brand-light text-brand-dark">{s.grade}. sınıf</span>
+                        {s.section && <span className="badge bg-slate-100 text-slate-600">{s.section} şubesi</span>}
+                        {s.teacher && <span className="badge bg-slate-100 text-slate-600">{s.teacher}</span>}
+                      </div>
+                      {s.description && (
+                        <p className="mt-2 text-sm text-slate-500 line-clamp-2">{s.description}</p>
                       )}
-                    </div>
-                  </Link>
+                      <div className="mt-3 flex items-center justify-between text-sm">
+                        <span className="text-slate-400">{bookCountMap[s.id] || 0} kitap</span>
+                        {isApproved && (
+                          <span className="font-bold text-brand">{tl(s.price)}</span>
+                        )}
+                      </div>
+                    </Link>
+                    {isApproved && (
+                      <form action={toggleSetVisibility} className="mt-3 border-t border-slate-100 pt-3">
+                        <input type="hidden" name="setId" value={s.id} />
+                        <input type="hidden" name="newActive" value={isActive ? 0 : 1} />
+                        <button className={`w-full rounded-lg px-3 py-1.5 text-xs font-medium transition ${
+                          isActive
+                            ? "border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                            : "bg-brand text-white hover:bg-brand-dark"
+                        }`}>
+                          {isActive ? "Öğrencilerden gizle" : "Öğrencilere göster"}
+                        </button>
+                      </form>
+                    )}
+                  </div>
                 );
               })}
             </div>

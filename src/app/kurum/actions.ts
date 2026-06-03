@@ -61,3 +61,19 @@ export async function createSetRequest(formData: FormData) {
   }
   revalidatePath("/kurum/setler");
 }
+
+export async function toggleSetVisibility(formData: FormData) {
+  const user = await requireRole("institution");
+  if (!user.institution_id) return;
+  const setId = Number(formData.get("setId"));
+  const newActive = Number(formData.get("newActive"));
+
+  const { error } = await supabase
+    .from("sets")
+    .update({ is_active: newActive })
+    .eq("id", setId)
+    .eq("institution_id", user.institution_id)
+    .eq("approval_status", "approved");
+  if (error) throw error;
+  revalidatePath("/kurum/setler");
+}
