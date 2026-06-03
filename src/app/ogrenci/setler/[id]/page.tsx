@@ -5,6 +5,7 @@ import { getSet, booksInSet, canStudentSeeSet } from "@/lib/queries";
 import { tl } from "@/lib/format";
 import Shell from "@/components/Shell";
 import { addToCart } from "../../actions";
+import BookListView from "./BookListView";
 
 export default async function SetDetail({ params }: { params: { id: string } }) {
   const user = await requireRole("student");
@@ -30,29 +31,8 @@ export default async function SetDetail({ params }: { params: { id: string } }) 
             {set.teacher && <span className="badge bg-slate-100 text-slate-600">{set.teacher}</span>}
           </div>
 
-          <h2 className="mb-3 mt-6 font-semibold">Set içindeki kitaplar</h2>
-          <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-            <table className="w-full text-sm">
-              <thead className="bg-slate-50 text-left text-slate-500">
-                <tr>
-                  <th className="px-4 py-2">Kitap</th>
-                  <th className="px-4 py-2">Yayınevi</th>
-                  <th className="px-4 py-2 text-center">Adet</th>
-                </tr>
-              </thead>
-              <tbody>
-                {books.map((b) => (
-                  <tr key={b.id} className="border-t border-slate-100">
-                    <td className="px-4 py-2">
-                      <div className="font-medium">{b.title}</div>
-                      <div className="text-xs text-slate-400">{b.author}</div>
-                    </td>
-                    <td className="px-4 py-2 text-slate-500">{b.publisher}</td>
-                    <td className="px-4 py-2 text-center">{b.quantity}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="mt-6">
+            <BookListView books={books} />
           </div>
         </div>
 
